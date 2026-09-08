@@ -5,6 +5,46 @@
 		@click.stop
 		@keyup.stop
 	>
+		<Dropdown
+			v-if="!isDraft"
+			class="action-slot"
+		>
+			<template #trigger="{toggleOpen, open}">
+				<BaseButton
+					class="action-icon"
+					:class="{'is-open': open}"
+					:disabled="!canWrite"
+					:aria-label="$t('task.attributes.title')"
+					:aria-expanded="open"
+					@click="canWrite ? openTitleEditor(toggleOpen) : undefined"
+				>
+					<Icon icon="pen" />
+				</BaseButton>
+			</template>
+			<template #default="{close}">
+				<form
+					class="action-field"
+					@submit.prevent="saveTitle(close)"
+				>
+					<input
+						ref="titleInputRef"
+						v-model="titleDraft"
+						class="input"
+						type="text"
+						:aria-label="$t('task.attributes.title')"
+					>
+					<XButton
+						variant="primary"
+						:shadow="false"
+						:disabled="!titleDraft.trim()"
+						@click="saveTitle(close)"
+					>
+						{{ $t('misc.save') }}
+					</XButton>
+				</form>
+			</template>
+		</Dropdown>
+
 		<Dropdown class="action-slot">
 			<template #trigger="{toggleOpen, open}">
 				<BaseButton
@@ -396,7 +436,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, shallowReactive, watch} from 'vue'
+import {computed, nextTick, ref, shallowReactive, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import dayjs from 'dayjs'
 
@@ -471,13 +511,20 @@ const showDeleteModal = ref(false)
 const labelQuery = ref('')
 const newSubtaskTitle = ref('')
 const customReminder = ref('')
+const titleDraft = ref('')
+const titleInputRef = ref<HTMLInputElement | null>(null)
 const filesRef = ref<HTMLInputElement | null>(null)
 
 watch(() => props.task?.id, () => {
 	labelQuery.value = ''
 	newSubtaskTitle.value = ''
 	customReminder.value = ''
+	titleDraft.value = props.task?.title ?? ''
 })
+
+watch(() => props.task?.title, (title) => {
+	titleDraft.value = title ?? ''
+}, {immediate: true})
 
 function hasDate(value: Date | string | number | null | undefined): boolean {
 	if (value === null || typeof value === 'undefined') {
@@ -595,6 +642,29 @@ function labelDotColor(label: ILabel) {
 
 function isLabelSelected(id: number) {
 	return currentLabels.value.some(label => label.id === id)
+}
+
+async function openTitleEditor(toggleOpen: () => void) {
+	titleDraft.value = props.task?.title ?? ''
+	toggleOpen()
+	await nextTick()
+	titleInputRef.value?.focus()
+	titleInputRef.value?.select()
+}
+
+async function saveTitle(close: () => void) {
+	const title = titleDraft.value.trim()
+	if (!title) {
+		titleDraft.value = props.task?.title ?? ''
+		error({message: t('task.detail.titleRequired')})
+		return
+	}
+	if (title === props.task?.title) {
+		close()
+		return
+	}
+	await persist({title})
+	close()
 }
 
 async function persist(patch: Partial<ITask>) {
@@ -831,7 +901,7 @@ async function deleteCurrentTask() {
 <style lang="scss" scoped>
 .task-action-bar {
 	display: grid;
-	grid-template-columns: repeat(9, minmax(0, 1fr));
+	grid-template-columns: repeat(10, minmax(0, 1fr));
 	align-items: center;
 	inline-size: 100%;
 
