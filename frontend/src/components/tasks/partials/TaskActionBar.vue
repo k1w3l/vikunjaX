@@ -49,6 +49,44 @@
 			<template #trigger="{toggleOpen, open}">
 				<BaseButton
 					class="action-icon"
+					:class="{'is-open': open, 'is-active': hasDescription}"
+					:disabled="!canWrite"
+					:aria-label="$t('task.attributes.description')"
+					:aria-expanded="open"
+					:aria-pressed="hasDescription"
+					@click="canWrite ? openDescriptionEditor(toggleOpen) : undefined"
+				>
+					<Icon icon="align-left" />
+				</BaseButton>
+			</template>
+			<template #default="{close}">
+				<form
+					class="action-field"
+					@submit.prevent="saveDescription(close)"
+				>
+					<textarea
+						ref="descriptionInputRef"
+						v-model="descriptionDraft"
+						class="input"
+						rows="3"
+						:aria-label="$t('task.attributes.description')"
+						:placeholder="$t('task.actionBar.notes')"
+					/>
+					<XButton
+						variant="primary"
+						:shadow="false"
+						@click="saveDescription(close)"
+					>
+						{{ $t('misc.save') }}
+					</XButton>
+				</form>
+			</template>
+		</Dropdown>
+
+		<Dropdown class="action-slot">
+			<template #trigger="{toggleOpen, open}">
+				<BaseButton
+					class="action-icon"
 					:class="dueIconClass(open)"
 					:disabled="!canWrite"
 					:aria-label="$t('task.attributes.dueDate')"
@@ -452,6 +490,7 @@ import {formatDateLong, formatDisplayDate} from '@/helpers/time/formatDate'
 import {getProjectTitle} from '@/helpers/getProjectTitle'
 import {uploadFile} from '@/helpers/attachments'
 import {error, success} from '@/message'
+import {editorHtmlFromPlainText, isEditorContentEmpty, plainTextFromEditor} from '@/helpers/editorContentEmpty'
 import {getHexColor, getTaskIdentifier} from '@/models/task'
 import {getDisplayName} from '@/models/user'
 import TaskReminderModel from '@/models/taskReminder'
@@ -475,6 +514,7 @@ const props = withDefaults(defineProps<{
 	projectId?: number
 	pendingFiles?: File[]
 	subtaskTitles?: string[]
+	description?: string
 }>(), {
 	task: null,
 	canWrite: true,
@@ -485,6 +525,7 @@ const props = withDefaults(defineProps<{
 	projectId: 0,
 	pendingFiles: () => [],
 	subtaskTitles: () => [],
+	description: '',
 })
 
 const emit = defineEmits<{
@@ -496,6 +537,7 @@ const emit = defineEmits<{
 	'update:projectId': [value: number]
 	'update:pendingFiles': [value: File[]]
 	'update:subtaskTitles': [value: string[]]
+	'update:description': [value: string]
 	deleted: []
 	discard: []
 }>()
@@ -513,6 +555,8 @@ const newSubtaskTitle = ref('')
 const customReminder = ref('')
 const titleDraft = ref('')
 const titleInputRef = ref<HTMLInputElement | null>(null)
+const descriptionDraft = ref('')
+const descriptionInputRef = ref<HTMLTextAreaElement | null>(null)
 const filesRef = ref<HTMLInputElement | null>(null)
 
 watch(() => props.task?.id, () => {
@@ -520,6 +564,7 @@ watch(() => props.task?.id, () => {
 	newSubtaskTitle.value = ''
 	customReminder.value = ''
 	titleDraft.value = props.task?.title ?? ''
+	descriptionDraft.value = currentDescriptionPlain()
 })
 
 watch(() => props.task?.title, (title) => {
@@ -557,6 +602,9 @@ const subtaskList = computed(() => {
 	return props.task?.relatedTasks?.subtask ?? []
 })
 const hasSubtasks = computed(() => subtaskList.value.length > 0)
+
+const currentDescription = computed(() => isDraft.value ? props.description : props.task?.description ?? '')
+const hasDescription = computed(() => !isEditorContentEmpty(currentDescription.value))
 
 const attachmentNames = computed(() => {
 	if (isDraft.value) {
@@ -642,6 +690,33 @@ function labelDotColor(label: ILabel) {
 
 function isLabelSelected(id: number) {
 	return currentLabels.value.some(label => label.id === id)
+}
+
+function currentDescriptionPlain() {
+	return plainTextFromEditor(currentDescription.value)
+}
+
+async function openDescriptionEditor(toggleOpen: () => void) {
+	descriptionDraft.value = currentDescriptionPlain()
+	toggleOpen()
+	await nextTick()
+	descriptionInputRef.value?.focus()
+}
+
+async function saveDescription(close: () => void) {
+	const next = editorHtmlFromPlainText(descriptionDraft.value)
+	const current = isEditorContentEmpty(currentDescription.value) ? '' : currentDescription.value
+	if (isDraft.value) {
+		emit('update:description', next)
+		close()
+		return
+	}
+	if (next === current) {
+		close()
+		return
+	}
+	await persist({description: next})
+	close()
 }
 
 async function openTitleEditor(toggleOpen: () => void) {
@@ -901,12 +976,12 @@ async function deleteCurrentTask() {
 <style lang="scss" scoped>
 .task-action-bar {
 	display: grid;
-	grid-template-columns: repeat(10, minmax(0, 1fr));
+	grid-template-columns: repeat(11, minmax(0, 1fr));
 	align-items: center;
 	inline-size: 100%;
 
 	&.is-draft {
-		grid-template-columns: repeat(8, minmax(0, 1fr));
+		grid-template-columns: repeat(9, minmax(0, 1fr));
 	}
 }
 
@@ -973,8 +1048,15 @@ async function deleteCurrentTask() {
 	gap: 0.4rem;
 	padding: 0.35rem 0.75rem 0.5rem;
 
-	.input {
+	.input,
+	textarea {
 		inline-size: 100%;
+	}
+
+	textarea {
+		min-block-size: 4.5rem;
+		resize: vertical;
+		font: inherit;
 	}
 }
 

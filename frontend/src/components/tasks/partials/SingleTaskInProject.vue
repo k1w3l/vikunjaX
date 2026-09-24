@@ -81,26 +81,12 @@
 					</TaskGlanceTooltip>
 				</span>
 				<template v-if="isExpanded">
-					<button
-						v-if="!editingNotes"
+					<p
+						v-if="notesPlain !== ''"
 						class="task-notes"
-						:class="{'is-empty': notesPlain === ''}"
-						type="button"
-						@click.stop="startEditingNotes"
 					>
-						{{ notesPlain || $t('task.actionBar.notes') }}
-					</button>
-					<textarea
-						v-else
-						ref="notesField"
-						v-model="notesDraft"
-						class="task-notes-input"
-						rows="2"
-						:placeholder="$t('task.actionBar.notes')"
-						@click.stop
-						@blur="saveNotes"
-						@keydown.escape="cancelNotes"
-					/>
+						{{ notesPlain }}
+					</p>
 					<Labels
 						v-if="task.labels.length > 0"
 						class="task-expanded-labels"
@@ -280,7 +266,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, watch, shallowReactive, onMounted, onBeforeUnmount, computed, nextTick} from 'vue'
+import {ref, watch, shallowReactive, onMounted, onBeforeUnmount, computed} from 'vue'
 import {useRouter} from 'vue-router'
 import {useI18n} from 'vue-i18n'
 
@@ -304,7 +290,7 @@ import Popup from '@/components/misc/Popup.vue'
 import TaskService from '@/services/task'
 
 import {formatDisplayDate, formatISO, formatDateLong} from '@/helpers/time/formatDate'
-import {success, error} from '@/message'
+import {success} from '@/message'
 
 import {useProjectStore} from '@/stores/projects'
 import {useBaseStore} from '@/stores/base'
@@ -312,7 +298,7 @@ import {useTaskStore} from '@/stores/tasks'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
 import {useIntervalFn} from '@vueuse/core'
 import {playPopSound} from '@/helpers/playPop'
-import {editorHtmlFromPlainText, isEditorContentEmpty, plainTextFromEditor} from '@/helpers/editorContentEmpty'
+import {isEditorContentEmpty, plainTextFromEditor} from '@/helpers/editorContentEmpty'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import {useGlobalNow} from '@/composables/useGlobalNow'
 import {useIsPhone} from '@/composables/useIsPhone'
@@ -354,9 +340,6 @@ const {t} = useI18n({useScope: 'global'})
 const isPhone = useIsPhone()
 const {expandedTaskId, toggle: toggleExpanded, collapse} = useExpandedTask()
 const isRemoved = ref(false)
-const editingNotes = ref(false)
-const notesDraft = ref('')
-const notesField = ref<HTMLTextAreaElement | null>(null)
 
 const taskService = shallowReactive(new TaskService())
 const task = ref<ITask>(new TaskModel())
@@ -537,50 +520,6 @@ function onTaskDeleted() {
 		collapse()
 	}
 }
-
-async function startEditingNotes() {
-	if (!props.canMarkAsDone || props.isArchived || props.disabled) {
-		return
-	}
-	notesDraft.value = notesPlain.value
-	editingNotes.value = true
-	await nextTick()
-	notesField.value?.focus()
-}
-
-async function saveNotes() {
-	if (!editingNotes.value) {
-		return
-	}
-	editingNotes.value = false
-	const next = editorHtmlFromPlainText(notesDraft.value)
-	const current = isEditorContentEmpty(task.value.description) ? '' : task.value.description
-	if (next === current || (next === '' && isEditorContentEmpty(task.value.description))) {
-		return
-	}
-	try {
-		const updated = await taskStore.update({
-			...task.value,
-			description: next,
-		})
-		task.value = updated
-		emit('taskUpdated', updated)
-	} catch (e) {
-		notesDraft.value = notesPlain.value
-		error(e)
-	}
-}
-
-function cancelNotes() {
-	notesDraft.value = notesPlain.value
-	editingNotes.value = false
-}
-
-watch(isExpanded, (expanded) => {
-	if (!expanded) {
-		editingNotes.value = false
-	}
-})
 
 onBeforeUnmount(() => {
 	clearTimeout(completingTimer)
@@ -1028,36 +967,15 @@ defineExpose({
 			}
 		}
 
-		.task-notes,
-		.task-notes-input {
+		.task-notes {
 			display: block;
 			inline-size: 100%;
-			margin-block-start: 0.25rem;
+			margin: 0.25rem 0 0;
 			font-size: 0.82rem;
 			line-height: 1.45;
 			color: var(--text-muted);
 			text-align: start;
-		}
-
-		.task-notes {
-			background: none;
-			border: 0;
-			padding: 0;
-			font: inherit;
-			font-size: 0.82rem;
-
-			&.is-empty {
-				opacity: 0.7;
-			}
-		}
-
-		.task-notes-input {
-			background: var(--white);
-			border: 1px solid var(--grey-200);
-			border-radius: $radius;
-			padding: 0.35rem 0.45rem;
-			color: var(--text);
-			resize: vertical;
+			white-space: pre-wrap;
 		}
 
 		.task-expanded-labels {

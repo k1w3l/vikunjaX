@@ -36,6 +36,7 @@
 					:project-id="selectedProjectId"
 					:pending-files="pendingFiles"
 					:subtask-titles="subtaskTitles"
+					:description="description"
 					@update:dueDate="dueDate = $event"
 					@update:priority="priority = $event"
 					@update:labels="selectedLabels = $event"
@@ -43,6 +44,7 @@
 					@update:projectId="onProjectPicked"
 					@update:pendingFiles="pendingFiles = $event"
 					@update:subtaskTitles="subtaskTitles = $event"
+					@update:description="description = $event"
 					@discard="close"
 				/>
 			</form>
@@ -129,6 +131,7 @@ const selectedLabels = ref<ILabel[]>([])
 const reminders = ref<ITaskReminder[]>([])
 const pendingFiles = ref<File[]>([])
 const subtaskTitles = ref<string[]>([])
+const description = ref('')
 
 const loading = computed(() => taskStore.isLoading)
 
@@ -176,6 +179,7 @@ function reset() {
 	reminders.value = []
 	pendingFiles.value = []
 	subtaskTitles.value = []
+	description.value = ''
 	titleError.value = null
 	projectError.value = null
 }
@@ -211,6 +215,7 @@ async function submit() {
 			startDate: startDate.value,
 			endDate: endDate.value,
 			reminders: reminders.value,
+			description: description.value,
 		}
 
 		const hasExtra = extra.priority !== PRIORITIES.UNSET
@@ -218,6 +223,7 @@ async function submit() {
 			|| extra.startDate !== null
 			|| extra.endDate !== null
 			|| extra.reminders.length > 0
+			|| extra.description !== ''
 
 		if (hasExtra) {
 			task = await taskStore.update({

@@ -32,6 +32,7 @@
 			<div class="tw:flex tw:justify-between">
 				<span class="task-id">
 					<Done
+						v-if="!isPhone"
 						class="kanban-card__done"
 						:is-done="task.done"
 						variant="small"
@@ -64,6 +65,19 @@
 			</div>
 			
 			<h3>
+				<span
+					v-if="isPhone"
+					class="kanban-card__check"
+					@click.stop
+				>
+					<FancyCheckbox
+						:model-value="task.done"
+						tone="complete"
+						:disabled="!canWrite || loadingInternal"
+						:aria-label="$t('task.detail.markAsDone', {task: task.title})"
+						@update:modelValue="toggleTaskDone(task)"
+					/>
+				</span>
 				<RouterLink
 					v-if="!isPhone"
 					:to="{ name: 'task.detail', params: {id: task.id} }"
@@ -104,26 +118,12 @@
 					class="kanban-card__expand"
 					@click.stop
 				>
-					<button
-						v-if="!editingNotes"
+					<p
+						v-if="notesPlain !== ''"
 						class="task-notes"
-						:class="{'is-empty': notesPlain === ''}"
-						type="button"
-						@click.stop="startEditingNotes"
 					>
-						{{ notesPlain || $t('task.actionBar.notes') }}
-					</button>
-					<textarea
-						v-else
-						ref="notesField"
-						v-model="notesDraft"
-						class="task-notes-input"
-						rows="2"
-						:placeholder="$t('task.actionBar.notes')"
-						@click.stop
-						@blur="saveNotes"
-						@keydown.escape="cancelNotes"
-					/>
+						{{ notesPlain }}
+					</p>
 					<Labels
 						v-if="(task.labels?.length ?? 0) > 0"
 						class="task-expanded-labels"
@@ -195,7 +195,7 @@
 </template>
 
 <script lang="ts" setup>
-import {computed, nextTick, ref, watch} from 'vue'
+import {computed, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
 
 import {useGlobalNow} from '@/composables/useGlobalNow'
@@ -205,6 +205,7 @@ import {useExpandedTask} from '@/composables/useExpandedTask'
 import PriorityLabel from '@/components/tasks/partials/PriorityLabel.vue'
 import ProgressBar from '@/components/misc/ProgressBar.vue'
 import Done from '@/components/misc/Done.vue'
+import FancyCheckbox from '@/components/input/FancyCheckbox.vue'
 import Labels from '@/components/tasks/partials/Labels.vue'
 import ChecklistSummary from './ChecklistSummary.vue'
 import CommentCount from './CommentCount.vue'
@@ -223,11 +224,10 @@ import {useTaskStore} from '@/stores/tasks'
 import {taskDetailLocation} from '@/helpers/taskDetailBackdrop'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
 import {playPopSound} from '@/helpers/playPop'
-import {editorHtmlFromPlainText, isEditorContentEmpty, plainTextFromEditor} from '@/helpers/editorContentEmpty'
+import {isEditorContentEmpty, plainTextFromEditor} from '@/helpers/editorContentEmpty'
 import {useProjectStore} from '@/stores/projects'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 import {displayTaskTitle} from '@/helpers/displayTaskTitle'
-import {error} from '@/message'
 import {PERMISSIONS} from '@/constants/permissions'
 import {useBaseStore} from '@/stores/base'
 
@@ -250,9 +250,6 @@ const isExpanded = computed(() => isPhone.value && expandedTaskId.value === prop
 const canWrite = computed(() => (useBaseStore().currentProject?.maxPermission ?? 0) > PERMISSIONS.READ)
 
 const loadingInternal = ref(false)
-const notesField = ref<HTMLTextAreaElement | null>(null)
-const editingNotes = ref(false)
-const notesDraft = ref('')
 const notesPlain = computed(() => plainTextFromEditor(props.task.description))
 
 const color = computed(() => getHexColor(props.task.hexColor))
@@ -320,41 +317,6 @@ function onCardClick() {
 		return
 	}
 	openTaskDetail()
-}
-
-async function startEditingNotes() {
-	if (!canWrite.value) {
-		return
-	}
-	notesDraft.value = notesPlain.value
-	editingNotes.value = true
-	await nextTick()
-	notesField.value?.focus()
-}
-
-async function saveNotes() {
-	if (!editingNotes.value) {
-		return
-	}
-	editingNotes.value = false
-	const next = editorHtmlFromPlainText(notesDraft.value)
-	if (next === props.task.description || (next === '' && isEditorContentEmpty(props.task.description))) {
-		return
-	}
-	try {
-		await useTaskStore().update({
-			...props.task,
-			description: next,
-		})
-	} catch (e) {
-		notesDraft.value = notesPlain.value
-		error(e)
-	}
-}
-
-function cancelNotes() {
-	editingNotes.value = false
-	notesDraft.value = notesPlain.value
 }
 
 const coverImageBlobUrl = ref<string | null>(null)
@@ -434,16 +396,19 @@ $task-background: var(--white);
 	}
 
 	h3 {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.15rem;
 		font-family: $family-sans-serif;
 		font-size: 1rem;
 		font-weight: 500;
 		min-inline-size: 0;
-		overflow: hidden;
 		color: var(--primary);
 	}
 
 	.kanban-card__title-link {
 		display: block;
+		flex: 1;
 		min-inline-size: 0;
 		overflow: hidden;
 		white-space: nowrap;
@@ -621,6 +586,11 @@ $task-background: var(--white);
 	margin-inline-end: .25rem;
 }
 
+.kanban-card__check {
+	flex-shrink: 0;
+	margin-block-start: -0.15rem;
+}
+
 .task-progress {
 	margin-block-start: 0.5rem;
 	inline-size: 100%;
@@ -672,36 +642,15 @@ $task-background: var(--white);
 	}
 }
 
-.task-notes,
-.task-notes-input {
+.task-notes {
 	display: block;
 	inline-size: 100%;
-	margin-block-start: 0.25rem;
+	margin: 0.25rem 0 0;
 	font-size: 0.82rem;
 	line-height: 1.45;
 	color: var(--text-muted);
 	text-align: start;
-}
-
-.task-notes {
-	background: none;
-	border: 0;
-	padding: 0;
-	font: inherit;
-	font-size: 0.82rem;
-
-	&.is-empty {
-		opacity: 0.7;
-	}
-}
-
-.task-notes-input {
-	background: var(--white);
-	border: 1px solid var(--grey-200);
-	border-radius: $radius;
-	padding: 0.35rem 0.45rem;
-	color: var(--text);
-	resize: vertical;
+	white-space: pre-wrap;
 }
 
 .task-expanded-labels,

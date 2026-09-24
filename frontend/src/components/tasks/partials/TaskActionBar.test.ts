@@ -92,6 +92,35 @@ describe('TaskActionBar — title edit', () => {
 		wrapper.unmount()
 	})
 
+	it('saves a description from the Save button', async () => {
+		const wrapper = mountBar()
+		await wrapper.get('[aria-label="task.attributes.description"]').trigger('click')
+		await nextTick()
+
+		await wrapper.get('textarea[aria-label="task.attributes.description"]').setValue('Bring the wrench')
+		await wrapper.get('form.action-field button').trigger('click')
+		await flushPromises()
+
+		expect(update).toHaveBeenCalledWith(expect.objectContaining({
+			description: '<p>Bring the wrench</p>',
+		}))
+		wrapper.unmount()
+	})
+
+	it('keeps a draft description local until the task exists', async () => {
+		const wrapper = mountBar({task: null, description: ''})
+		await wrapper.get('[aria-label="task.attributes.description"]').trigger('click')
+		await nextTick()
+
+		await wrapper.get('textarea[aria-label="task.attributes.description"]').setValue('Draft note')
+		await wrapper.get('form.action-field').trigger('submit')
+		await flushPromises()
+
+		expect(update).not.toHaveBeenCalled()
+		expect(wrapper.emitted('update:description')?.[0]).toEqual(['<p>Draft note</p>'])
+		wrapper.unmount()
+	})
+
 	it('hides the title action on a draft', () => {
 		const wrapper = mountBar({task: null})
 		expect(wrapper.find('[aria-label="task.attributes.title"]').exists()).toBe(false)
